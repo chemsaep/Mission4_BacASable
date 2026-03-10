@@ -1,0 +1,183 @@
+= Étude de cas WebCaisse : Architecture Java, SQL et Sécurité
+:toc: left
+:source-highlighter: highlightjs
+:sectnums:
+
+== Mission 1 : Architecture et Modélisation
+
+=== 1.1 Modèle Relationnel (MLD)
+* *Client* (Id, raison sociale, adresse, telephone, #IdProgrammefidelité)
+* *Point de vente* (id, nomPDV, adresse, #idClient, #idformule)
+* *Formule* (id, libelle, prix, nbVendeursSimultanes)
+* *ProgrammeFidelite* (id, libelleProg)
+* *Langue* (id, libelleLangue)
+
+=== 1.2 Processus d'inscription sécurisé
+Le processus suit les étapes suivantes :
+1. Entrée des informations.
+2. Création d'un token temporaire.
+3. Envoi par mail d'un lien d'activation.
+4. L'utilisateur choisit son mot de passe (MDP).
+5. Le MDP est haché avant stockage.
+
+=== 1.3 Problématique de l'historique
+La structure initiale de la table `FormuleSouscrite(idPointDeVente, idFormule)` pose deux problèmes majeurs pour l'historique de facturation, notamment des contraintes de **clés primaires** qui empêchent de stocker plusieurs formules successives pour un même point de vente.
+
+=== 1.4 Nouvelle structure de table
+[source,sql]
+----
+FormuleSouscrite (#idPointDeVente, dateDebut, #idFormule, dateFin)
+----
+
+
+=== 1.5 Automatisation de l'audit (Trigger)
+[source,sql]
+----
+CREATE TRIGGER trigger  
+AFTER UPDATE ON FormuleSouscrite  
+FOR EACH ROW  
+BEGIN  
+    IF OLD.idFormule <> NEW.idFormule THEN  
+        INSERT INTO AuditFormule (idPDV, ancienneFormule, nouvelleFormule, dateModif)  
+        VALUES (OLD.idPointDeVente, OLD.idFormule, NEW.idFormule, NOW());  
+    END IF;  
+END;
+----
+
+
+== Mission 2 : Exploitation des données et Sécurité
+
+=== 2.1 Requêtes SQL
+a) Liste des clients ayant effectué une vente en 2017 :
+[source,sql]
+----
+SELECT DISTINCT c.nom, c.prenom, c.mail   
+FROM Conso c  
+JOIN Vente v ON c.id = v.idConso  
+WHERE YEAR(v.dateVente) = 2017;
+----
+
+b) Nombre de consommateurs fidèles âgés de 18 à 30 ans :
+[source,sql]
+----
+SELECT COUNT(id) AS NbConsommateurs  
+FROM ConsoFidele  
+WHERE TIMESTAMPDIFF(YEAR, dateNaiss, CURDATE()) BETWEEN 18 AND 30;
+----
+
+c) Montant total des ventes par client :
+[source,sql]
+----
+SELECT c.nom, c.prenom, SUM(v.montantVente) AS MontantTotal  
+FROM Conso c  
+JOIN Vente v ON c.id = v.idConso  
+GROUP BY c.id, c.nom, c.prenom;
+----
+
+=== 2.2 Vulnérabilité
+La méthode `listeConsoAFideliser` est vulnérable à une faille critique de type **Injection SQL**.
+
+=== 2.3 Sécurisation avec PreparedStatement
+[source,java]
+----
+String requete = "SELECT c.nom, c.prenom, c.tel, c.mail "  
+               + "FROM Conso c JOIN Vente v ON c.id = v.idConso "  
+               + "WHERE c.id NOT IN (SELECT id FROM ConsoFidele) "  
+               + "AND v.dateVente BETWEEN ? AND ? "  
+               + "GROUP BY c.id, c.nom, c.prenom, c.tel, c.mail "  
+               + "HAVING COUNT(v.id) > ?";
+
+PreparedStatement pstmt = dbConnect.prepareStatement(requete);
+pstmt.setDate(1, java.sql.Date.valueOf(dateDeb));  
+pstmt.setDate(2, java.sql.Date.valueOf(dateFin));  
+pstmt.setInt(3, seuilVentes);
+
+ResultSet res = pstmt.executeQuery();
+----
+
+
+=== 2.4 Tests Unitaires (JUnit)
+Validation des calculs de points de fidélité par tampon et par montant.
+
+=== 2.5 Test de seuils spécifiques
+[source,java]
+----
+public void testAddMontant() {  
+    ConsoFidele consoTest = new ConsoFidele("Lifo", "Paul", "lifo.paul@gmail.com", "0600000000", ...);
+
+    consoTest.addFidelite(3, 150);  
+    assertEquals(10, consoTest.getPointsFidelite());
+
+    consoTest.addFidelite(3, 300);  
+    assertEquals(30, consoTest.getPointsFidelite());
+}
+----
+
+
+== Mission 3 : Développement Java
+
+=== 3.1 Documentation de méthode
+La méthode calcule la proportion de ventes réalisées par des clients fidèles par rapport à la liste des ventes du jour.
+
+=== 3.2 Accesseur
+[source,java]
+----
+public int getNbVentes() {  
+    return this.lesVentes.size();  
+}
+----
+
+
+=== 3.3 Héritage : VenteEcommerce
+[source,java]
+----
+class VenteEcommerce extends Vente {  
+   private String adresseLivraison;  
+   private String optionLivraison;  
+
+   public VenteEcommerce(Date uneDateVente, Conso unConso, double unMontant,  
+                         String adresseLivraison, String optionLivraison) {  
+       super(uneDateVente, unConso, unMontant);  
+       this.adresseLivraison = adresseLivraison;  
+       this.optionLivraison = optionLivraison;  
+   }  
+}
+----
+
+
+=== 3.4 Calcul comparatif
+Utilisation de `instanceof` pour distinguer les types de ventes.
+
+=== 3.5 Gestion d'erreur (Division par zéro)
+[source,java]
+----
+if (totalEcom == 0) {  
+    return -1;  
+}  
+return totalMag / totalEcom;
+----
+
+
+=== 3.6 Filtrage de collections
+[source,java]
+----
+public ArrayList<Vente> getVentesSupA(double seuil) {  
+    ArrayList<Vente> grossesVentes = new ArrayList<>();  
+    for (Vente v : this.lesVentes) {  
+        if (v.getMontantVente() > seuil) {  
+            grossesVentes.add(v);  
+        }  
+    }  
+    return grossesVentes;  
+}
+----
+
+
+== Questions Finales
+
+1. **Norme NF525 :** Oblige le logiciel à garantir l'inaltérabilité, la sécurité (archivage) et la traçabilité des données pour empêcher la fraude fiscale.
+2. **Danger du MDP par mail :** Le message peut être intercepté par un tiers, offrant un accès immédiat sans effort de piratage.
+3. **Absence de dates :** Sans `dateDebut` ou `dateFin`, la table ne stocke que l'état actuel, rendant impossible la facturation rétroactive exacte.
+4. **Avantage du Trigger :** Il s'exécute automatiquement côté base de données, garantissant l'audit même si l'application Java oublie de le faire.
+5. **WHERE vs HAVING :** `WHERE` filtre avant le regroupement ; `HAVING` filtre après le `GROUP BY`.
+6. **Exemple d'Injection SQL :** L'utilisation de `' OR '1'='1` dans un champ de login pour court-circuiter la vérification du mot de passe.
