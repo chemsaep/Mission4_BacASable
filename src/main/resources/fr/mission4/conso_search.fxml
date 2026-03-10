@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox prefHeight="500.0" prefWidth="700.0" spacing="10.0" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="fr.mission4.controllers.ConsoSearchController">
+    <padding>
+        <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
+    </padding>
+
+    <Label style="-fx-font-size: 18px; -fx-font-weight: bold;" text="Recherche des Consommateurs Réguliers (OWASP Secure)" />
+    
+    <HBox alignment="CENTER_LEFT" spacing="15.0">
+        <Label text="Rechercher (Nom/Prénom) :" />
+        <TextField fx:id="searchField" promptText="Ex: Dubois" HBox.hgrow="ALWAYS" />
+        <CheckBox fx:id="regularOnlyCheckBox" text="Réguliers uniquement (≥ 2 ventes ce mois)" />
+        <Button onAction="#handleSearch" style="-fx-background-color: #0d6efd; -fx-text-fill: white; -fx-font-weight: bold;" text="Rechercher" />
+    </HBox>
+
+    <TableView fx:id="consoTable" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="colNom" prefWidth="120.0" text="Nom" />
+            <TableColumn fx:id="colPrenom" prefWidth="120.0" text="Prénom" />
+            <TableColumn fx:id="colTel" prefWidth="100.0" text="Téléphone" />
+            <TableColumn fx:id="colMail" prefWidth="180.0" text="Email" />
+            <TableColumn fx:id="colVentes" prefWidth="80.0" text="Ventes" />
+        </columns>
+    </TableView>
+
+    <Label fx:id="statusLabel" text="Prêt." textFill="GREY" />
+</VBox>
